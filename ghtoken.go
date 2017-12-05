@@ -1,11 +1,3 @@
-// Copyright 2015 The go-github AUTHORS. All rights reserved.
-//
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// The basicauth command demonstrates using the github.BasicAuthTransport,
-// including handling two-factor authentication. This won't currently work for
-// accounts that use SMS to receive one-time passwords.
 package main
 
 import (
@@ -15,13 +7,35 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"time"
 
+	"flag"
 	"github.com/google/go-github/github"
 	"golang.org/x/crypto/ssh/terminal"
-		"net/url"
+	"math/rand"
+	"net/url"
 )
 
+var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func randStr(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
+}
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
 func main() {
+
+	note := flag.String("note", fmt.Sprintf("ghtoken: %s", randStr(6)), "A note to remind you what the OAuth token is for.")
+	scopes := flag.String("scopes", "", "A list of scopes that this authorization is in.")
+	flag.Parse()
+
 	r := bufio.NewReader(os.Stdin)
 	fmt.Print("GitHub Username: ")
 	username, _ := r.ReadString('\n')
@@ -45,17 +59,22 @@ func main() {
 	ctx := context.Background()
 
 	authRequest := &github.AuthorizationRequest{}
-	note := "Get me a token!"
-	authRequest.Note = &note
+	if *scopes != "" {
+		for _, scope := range strings.Split(*scopes, ",") {
+			fmt.Sprintf("scope: %s", scope)
+			authRequest.Scopes = append(authRequest.Scopes, github.Scope(scope))
+		}
+	}
+	authRequest.Note = note
 
-	authorization, _, err := client.Authorizations.Create(ctx,authRequest) 
+	authorization, _, err := client.Authorizations.Create(ctx, authRequest)
 
 	// Is this a two-factor auth error? If so, prompt for OTP and try again.
 	if _, ok := err.(*github.TwoFactorAuthError); ok {
 		fmt.Print("\nGitHub OTP: ")
 		otp, _ := r.ReadString('\n')
 		tp.OTP = strings.TrimSpace(otp)
-		authorization, _, err = client.Authorizations.Create(ctx,authRequest) 
+		authorization, _, err = client.Authorizations.Create(ctx, authRequest)
 	}
 
 	if err != nil {
